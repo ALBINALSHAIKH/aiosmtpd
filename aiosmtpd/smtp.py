@@ -65,6 +65,8 @@ _TriStateType = Union[None, _Missing, bytes]
 RT = TypeVar("RT")  # "ReturnType"
 DecoratorType = Callable[[Callable[..., RT]], Callable[..., RT]]
 
+DATA_LIMITER = (b'\r\n', b'\t')
+
 
 # endregion
 
@@ -1427,9 +1429,22 @@ class SMTP(asyncio.StreamReaderProtocol):
             # readuntil() can never raise asyncio.IncompleteReadError.
             try:
                 # https://datatracker.ietf.org/doc/html/rfc5321#section-2.3.8
-                line: bytes = await self._reader.readuntil(b'\r\n')
+
+                #Read a data line that ends with a tuple of data seperators
+                line: bytes = b''
+                limiter: bytes = b''
+                while not limiter:
+                    line += await self._reader.read(1)
+                    if isinstance(DATA_LIMITER, tuple):
+                        for x in DATA_LIMITER:
+                            if line.endswith(x):
+                                limiter = x
+                    else:
+                        if line.endswith(DATA_LIMITER):
+                            limiter = DATA_LIMITER
+
                 log.debug('DATA readline: %s', line)
-                assert line.endswith(b'\r\n')
+                assert line.endswith(limiter)
             except asyncio.CancelledError:
                 # The connection got reset during the DATA command.
                 log.info('Connection lost during DATA')
@@ -1446,9 +1461,9 @@ class SMTP(asyncio.StreamReaderProtocol):
                 data *= 0
                 # Drain the stream anyways
                 line = await self._reader.read(e.consumed)
-                assert not line.endswith(b'\r\n')
+                assert not line.endswith(limiter)
             # A lone dot in a line signals the end of DATA.
-            if not line_fragments and line == b'.\r\n':
+            if not line_fragments and line == b'.' + limiter:
                 break
             num_bytes += len(line)
             if state == _DataState.NOMINAL and limit and num_bytes > limit:
@@ -1458,7 +1473,7 @@ class SMTP(asyncio.StreamReaderProtocol):
                 # Discard data immediately to prevent memory pressure
                 data *= 0
             line_fragments.append(line)
-            if line.endswith(b'\r\n'):
+            if line.endswith(limiter):
                 # Record data only if state is "NOMINAL"
                 if state == _DataState.NOMINAL:
                     line = EMPTY_BARR.join(line_fragments)
