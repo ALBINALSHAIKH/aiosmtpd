@@ -65,7 +65,9 @@ _TriStateType = Union[None, _Missing, bytes]
 RT = TypeVar("RT")  # "ReturnType"
 DecoratorType = Callable[[Callable[..., RT]], Callable[..., RT]]
 
-DATA_LIMITER = (b'\r\n', b'\t')
+DATA_LIMITER = (b'\r\n')
+
+DATA_MSG = "354 End data with "
 
 
 # endregion
@@ -1417,7 +1419,17 @@ class SMTP(asyncio.StreamReaderProtocol):
             await self.push('501 Syntax: DATA')
             return
 
-        await self.push('354 End data with <CR><LF>.<CR><LF>')
+        msg = DATA_MSG
+        if isinstance(DATA_LIMITER, tuple):
+            for i, x in enumerate(DATA_LIMITER):
+                l = repr(x.decode()).strip('\'')
+                msg += l + '.' + l
+                if i + 1 != len(DATA_LIMITER):
+                    msg += ' or '
+        else:
+            l = repr(DATA_LIMITER.decode()).strip('\'')
+            msg += l + '.' + l
+        await self.push(msg)
         data: List[bytearray] = []
 
         num_bytes: int = 0

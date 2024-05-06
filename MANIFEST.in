@@ -1,3 +1,0 @@
-graft aiosmtpd
-include LICENSE NOTICE .coveragerc *.cfg *.ini *.py *.rst *.yml *.toml *.txt
-global-exclude *.py[oc] *.sw[a-p] pyvenv.cfg
